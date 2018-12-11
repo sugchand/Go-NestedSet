@@ -56,6 +56,9 @@ func (sqlds *SqliteDataStore)CreateDBConnection(
     // accessing the DB file.
     sqlds.DBConn.SetMaxOpenConns(1)
     sqlds.dblogger.Trace("Created sqlite3 DB connection to %s", dbFile)
+    //Start the single thread to update the nested set data now. Its safe to do
+    // it here as DB connection is created only once in the entire application.
+    go updateNestedSetLimitsInDB()
     return nil
 }
 

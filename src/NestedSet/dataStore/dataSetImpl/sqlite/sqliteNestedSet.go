@@ -21,10 +21,23 @@ import (
     "github.com/jmoiron/sqlx"
 )
 
+// Go channel and its size for updating nested set fields in the DB.
+var updateChannel chan *sqliteNSOP
+const DEFAULT_UPDATE_CHANNEL_SIZE = 5000
+
 //Structure to perform nested set data update for record add/delete.
 type sqliteNSOP struct {
     dataObj *sqlData
     conn *sqlx.DB
+}
+
+func (nsOp *sqliteNSOP)pushNSLimitsForUpdate(dataObj *sqlData,
+                                             conn *sqlx.DB) {
+    var nsOPObj *sqliteNSOP
+    nsOPObj = new(sqliteNSOP)
+    nsOPObj.dataObj = dataObj
+    nsOPObj.conn = conn
+    updateChannel <- nsOPObj
 }
 
 // Update the right end of parent record to accomodate new child.
@@ -34,12 +47,7 @@ func (nsOp *sqliteNSOP)updateParentRecord(parentObj *sqlData,
     var err error
     log := logger.GetLoggerInstance()
     parentObj.RgtId = parentObj.RgtId + updateVal
-    err = parentObj.updateIds(nsOp.conn)
-    if err != nil {
-        log.Error("Failed to update the parent %s, err : %s",
-                    parentObj.Uid, err)
-        return err
-    }
+    nsOp.pushNSLimitsForUpdate(parentObj, nsOp.conn)
     if len(parentObj.Puid) == 0 {
         //No more parent, return now.
         return nil
@@ -59,7 +67,6 @@ func (nsOp *sqliteNSOP)updateParentRecord(parentObj *sqlData,
 func(nsOp *sqliteNSOP)updateAllRecords(recs []dataStore.Data,
                                 updateVal int64) error {
     var err error
-    log := logger.GetLoggerInstance()
     var recObj *sqlData
     recObj = new(sqlData)
     err = nil
@@ -67,12 +74,7 @@ func(nsOp *sqliteNSOP)updateAllRecords(recs []dataStore.Data,
         row.LftId = row.LftId + updateVal
         row.RgtId = row.RgtId + updateVal
         recObj.Data = &row // Assign row to update.
-        err = recObj.updateIds(nsOp.conn)
-        if err != nil {
-            log.Error("Failed to update the record %s, err %s",
-                        recObj.Uid, err)
-            //Dont return now, lets continue update to other records.
-        }
+        nsOp.pushNSLimitsForUpdate(recObj, nsOp.conn)
     }
     return err
 }
@@ -120,9 +122,11 @@ func(nsOp *sqliteNSOP)updateNSListLimitsOnAdd() error{
     // Update the record with limits.
     nsOp.dataObj.LftId = parentObj.RgtId
     nsOp.dataObj.RgtId = nsOp.dataObj.LftId + 1
-    err = nsOp.dataObj.updateIds(nsOp.conn)
-    if err == nil {
-        err = nsOp.updateParentRecord(parentObj, 2)
+    nsOp.pushNSLimitsForUpdate(nsOp.dataObj, nsOp.conn)
+    err = nsOp.updateParentRecord(parentObj, 2)
+    if err != nil {
+        log.Error("Failed to update the parent records on adding new record" +
+                  " %s err : %s", nsOp.dataObj.Uid, err)
     }
     //Update all other records in the table.
     err = nsOp.UpdateTreeOnAdd()
@@ -210,4 +214,28 @@ func NewSqliteNestedSet(dataObj *sqlData, conn *sqlx.DB) *sqliteNSOP {
     NSObj.dataObj = dataObj
     NSObj.conn = conn
     return NSObj
+}
+
+//Function for updating the nested set properties. Application uses 'single'
+// thread to run this function, to assure all the nested set operations are get
+// serialized. Any nested set update operation are pushed to a go channel from
+// other threads and the function below is responsible for update the DB
+// by using the data from the channel. Since the function is executed only from
+// one thread, isolation is always guranteed by serialization.
+// NEVER CALL THIS FUNCTION MORE THAN ONCE IN AN APPLICATION FROM DIFFERENT
+// THREADS
+func updateNestedSetLimitsInDB() {
+    log := logger.GetLoggerInstance()
+    updateChannel = make(chan *sqliteNSOP, 5000)
+    for true {
+        nsOp := <- updateChannel //Blocking call to read from channel.
+        err := nsOp.dataObj.updateIds(nsOp.conn)
+        if err != nil {
+            log.Error("Failed to update record %s err: %s",
+                       nsOp.dataObj.Uid, err)
+            continue
+        }
+        log.Trace("Record %s is updated with nestedset fields",
+                   nsOp.dataObj.Uid)
+    }
 }
