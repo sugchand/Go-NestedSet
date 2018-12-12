@@ -47,7 +47,7 @@ After the compilation, simply run the following command to start the application
 
 #### Get all the records in the system.
 
-* Request
+* Request(GET)
 
 ```
 http://localhost:8080/data
