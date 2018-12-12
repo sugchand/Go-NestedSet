@@ -69,6 +69,10 @@ var (
                                     SQL_DATA_TABLE_NAME)
     dataGetwthUid = fmt.Sprintf(`SELECT * FROM %s WHERE %s=(?)`,
                                 SQL_DATA_TABLE_NAME, DATA_UID)
+    //Get an entry with name
+    dataGetwthName = fmt.Sprintf(`SELECT * FROM %s WHERE %s=(?)`,
+                               SQL_DATA_TABLE_NAME,
+                               DATA_NAME)
     //Get an entry with name under specific parent.
     dataGetwthNamePID = fmt.Sprintf(`SELECT * FROM %s WHERE %s=(?) AND
                                %s=(?)`,
@@ -195,6 +199,25 @@ func (dataObj *sqlData)GetdataById(conn *sqlx.DB)(*dataStore.Data, error) {
         return nil,appErrors.DATA_NOT_UNIQUE_ERROR
     }
     return &rows[0], nil
+}
+
+//Retreive a record with specific name and parent ID.
+func (dataObj *sqlData)getDataWithName(conn *sqlx.DB) ([]dataStore.Data,
+                                                            error) {
+    var err error
+    log := logger.GetLoggerInstance()
+    rows := []dataStore.Data{}
+    if len(dataObj.Name) == 0 {
+        log.Error("Failed to get the record, name/puid is null")
+        return nil, appErrors.INVALID_INPUT
+    }
+    err = conn.Select(&rows, dataGetwthName, dataObj.Name)
+    if err != nil {
+        log.Error("Failed to retereive the record with name %s",
+                    dataObj.Name)
+        return nil, err
+    }
+    return rows, nil
 }
 
 //Retreive a record with specific name and parent ID.

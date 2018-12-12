@@ -54,7 +54,7 @@ func (sqlds *SqliteDataStore)CreateDBConnection(
     // Serialize the DB access by limiting open connections to 1.
     // This will ensure there are no issues when concurrent threads are
     // accessing the DB file.
-    sqlds.DBConn.SetMaxOpenConns(1)
+    //sqlds.DBConn.SetMaxOpenConns(1)
     sqlds.dblogger.Trace("Created sqlite3 DB connection to %s", dbFile)
     //Start the single thread to update the nested set data now. Its safe to do
     // it here as DB connection is created only once in the entire application.
@@ -101,8 +101,11 @@ func (sqlds *SqliteDataStore)GetRecord(recid string) (*dataStore.Data, error) {
 }
 
 func (sqlds *SqliteDataStore)GetRecordByName(name string)([]dataStore.Data, error) {
-    //TODO
-    return nil, nil
+    sqlDataObj := new(sqlData)
+    sqlDataObj.Data = new(dataStore.Data)
+    sqlDataObj.Name = name
+    row, err := sqlDataObj.getDataWithName(sqlds.DBConn)
+    return row, err
 }
 
  func (sqlds *SqliteDataStore)GetAllRecords()([]dataStore.Data, error) {

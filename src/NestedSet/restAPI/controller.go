@@ -51,20 +51,57 @@ func (ctrl *controller) getAllRecords(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ctrl *controller) getRecord(w http.ResponseWriter, r *http.Request) {
+    var err error
+    vars := mux.Vars(r)
     log := logger.GetLoggerInstance()
+    Uid := vars["record-id"]
+    if len(Uid) == 0 {
+        log.Error("Empty record id , cannot find it")
+        w.WriteHeader(http.StatusBadRequest)
+        return
+    }
+    var dataObj *dataStore.Data
+    dbObj := dataSetImpl.GetDataSetObj()
+    dataObj,err = dbObj.GetRecord(Uid)
+    if err != nil || dataObj == nil {
+        log.Error(`Failed to retrieive the record object %s` +
+                    `err : %s`, Uid, err)
+        w.WriteHeader(http.StatusBadRequest)
+        return
+    }
+    data, _ := json.Marshal(dataObj)
     w.Header().Set("Content-Type", "application/json; charset=UTF-8")
     w.Header().Set("Access-Control-Allow-Origin", "*")
     w.WriteHeader(http.StatusOK)
+    w.Write(data)
     log.Trace("Getting a single record in the system")
 }
 
 func (ctrl *controller) getRecordsByName(w http.ResponseWriter,
                                          r *http.Request) {
+    var err error
+    vars := mux.Vars(r)
     log := logger.GetLoggerInstance()
+    name := vars["record-name"]
+    if len(name) == 0 {
+        log.Error("Empty record name , cannot find it")
+        w.WriteHeader(http.StatusBadRequest)
+        return
+    }
+    var rows []dataStore.Data
+    dbObj := dataSetImpl.GetDataSetObj()
+    rows,err = dbObj.GetRecordByName(name)
+    if err != nil || len(rows) == 0{
+        log.Error(`Failed to retrieive the record object: %s
+                    err : %s`, name, err)
+        w.WriteHeader(http.StatusBadRequest)
+        return
+    }
+    data, _ := json.Marshal(rows)
     w.Header().Set("Content-Type", "application/json; charset=UTF-8")
     w.Header().Set("Access-Control-Allow-Origin", "*")
     w.WriteHeader(http.StatusOK)
-    log.Trace("Getting a record in the system with the name")
+    w.Write(data)
 }
 
 func (ctrl *controller) addRecord(w http.ResponseWriter, r *http.Request) {
